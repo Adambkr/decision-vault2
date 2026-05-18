@@ -1,0 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Playfair Display", serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-luxury-bg: #080C14;
+  --color-luxury-surface: #0E1421;
+  --color-gold-accent: #F5A623;
+  --color-gold-light: #FFD166;
+}
+
+@layer base {
+  body {
+    @apply bg-[#080C14] text-white font-sans antialiased selection:bg-gold-accent/30 selection:text-white overflow-x-hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight;
+  }
+}
+
+.glass-card {
+  @apply bg-white/[0.02] border border-white/[0.05] backdrop-blur-md rounded-2xl transition-all duration-500 hover:bg-white/[0.04] hover:border-white/[0.1] hover:shadow-[0_0_40px_rgba(245,166,35,0.05)];
+}
+
+.gold-glow {
+  box-shadow: 0 0 30px rgba(245, 166, 35, 0.15);
+}
+
+.mesh-orb {
+  @apply absolute rounded-full blur-[120px] pointer-events-none mix-blend-screen animate-pulse;
+}
+
+.custom-cursor {
+  @apply fixed w-2 h-2 bg-gold-accent rounded-full pointer-events-none z-[9999] mix-blend-difference transition-transform duration-300 scale-100;
+}
+
+.custom-cursor-expand {
+  @apply scale-[4] bg-white mix-blend-difference;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-luxury-bg;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-white/10 rounded-full hover:bg-white/20 transition-colors;
+}
+
+/* Noise texture overlay */
+.noise-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+

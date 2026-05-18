@@ -1,0 +1,8 @@
+{
+  "name": "DecisionVault",
+  "description": "A premium, dark-luxury decision journal for founders and executives to log, refine, and review high-stakes decisions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
