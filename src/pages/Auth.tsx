@@ -11,7 +11,7 @@ import { useAuth } from '@/context/AuthContext';
 export default function AuthPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { user, signInWithGoogle, authError } = useAuth();
+  const { user, signIn, signUp, signInWithGoogle, authError } = useAuth();
   const mode = searchParams.get('mode') || 'login';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -43,9 +43,21 @@ export default function AuthPage() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('Email/Password authentication is not configured. Please use Google Login.');
+    setError('');
+    setIsLoading(true);
+    try {
+      if (mode === 'login') {
+        await signIn(email, password);
+      } else {
+        await signUp(email, password);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Authentication failed');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

@@ -6,6 +6,8 @@ interface AuthContextType {
   user: User | null;
   profile: any | null;
   loading: boolean;
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   authError: string | null;
@@ -64,6 +66,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  const signIn = async (email: string, password: string) => {
+    setAuthError(null);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setAuthError(error.message);
+      throw error;
+    }
+  };
+
+  const signUp = async (email: string, password: string) => {
+    setAuthError(null);
+    const { error } = await supabase.auth.signUp({ email, password });
+    if (error) {
+      setAuthError(error.message);
+      throw error;
+    }
+  };
+
   const signInWithGoogle = async () => {
     setAuthError(null);
     const { error } = await supabase.auth.signInWithOAuth({
@@ -82,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signInWithGoogle, signOut, authError }}>
+    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signInWithGoogle, signOut, authError }}>
       {children}
     </AuthContext.Provider>
   );
