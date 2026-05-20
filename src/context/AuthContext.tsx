@@ -1,10 +1,20 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import type { User, AuthError } from '@supabase/supabase-js';
+import type { User } from '@supabase/supabase-js';
+
+interface Profile {
+  id: string;
+  email?: string;
+  display_name?: string;
+  role?: string;
+  plan?: string;
+  review_default_cadence?: number;
+  [key: string]: any;
+}
 
 interface AuthContextType {
   user: User | null;
-  profile: any | null;
+  profile: Profile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
@@ -17,54 +27,64 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<any | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const loadProfile = async (currentUser: User | null) => {
+  const loadProfile = useCallback(async (currentUser: User | null) => {
     if (currentUser) {
-      const { data } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', currentUser.id)
-        .single();
-      if (data) {
-        setProfile(data);
-      } else {
-        const initialProfile = {
-          id: currentUser.id,
-          email: currentUser.email,
-          display_name: currentUser.user_metadata?.full_name || currentUser.user_metadata?.name,
-          plan: 'Free'
-        };
-        await supabase.from('users').insert(initialProfile);
-        setProfile(initialProfile);
+      try {
+        const { data } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', currentUser.id)
+          .single();
+        if (data) {
+          setProfile(data as Profile);
+        } else {
+          const initialProfile: Profile = {
+            id: currentUser.id,
+            email: currentUser.email || undefined,
+            display_name: currentUser.user_metadata?.full_name || currentUser.user_metadata?.name,
+            plan: 'Free'
+          };
+          const { error: insertErr } = await supabase.from('users').insert(initialProfile);
+          if (!insertErr) {
+            setProfile(initialProfile);
+          }
+        }
+      } catch {
+        // Silently fail profile load; auth state is still valid
       }
     } else {
       setProfile(null);
     }
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
-    // Get initial session on mount
+    let mounted = true;
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       loadProfile(currentUser);
     });
 
-    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      (_event, session) => {
+        if (!mounted) return;
         const currentUser = session?.user ?? null;
         setUser(currentUser);
         loadProfile(currentUser);
       }
     );
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [loadProfile]);
 
   const signIn = async (email: string, password: string) => {
     setAuthError(null);

@@ -1,261 +1,211 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Button, Card, Badge } from '@/components/ui';
-import { Check, X, ShieldAlert, Sparkles, ArrowRight, Quote, Loader2 } from 'lucide-react';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-import { useAuth } from '@/context/AuthContext';
+import confetti from 'canvas-confetti';
+import { toast } from 'react-hot-toast';
+import { Button, Badge } from '@/components/ui';
+import { ArrowLeft, Loader2, AlertCircle, Trophy } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+import { useAuth } from '@/context/AuthContext';
 
 export default function ReviewMode() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  
   const [decision, setDecision] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isCompleted, setIsCompleted] = useState(false);
-  
-  const [whatHappened, setWhatHappened] = useState('');
-  const [outcome, setOutcome] = useState<string | null>(null);
-  const [whatRight, setWhatRight] = useState('');
-  const [whatWrong, setWhatWrong] = useState('');
+  const [actualOutcome, setActualOutcome] = useState('');
+  const [outcomeMatch, setOutcomeMatch] = useState<'yes' | 'no' | 'partial' | ''>('');
+  const [gotRight, setGotRight] = useState('');
+  const [missed, setMissed] = useState('');
   const [updatedConfidence, setUpdatedConfidence] = useState(50);
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
 
   useEffect(() => {
     async function fetchDecision() {
       if (!id) return;
-      try {
-        const { data, error } = await supabase
-          .from('decisions')
-          .select('*')
-          .eq('id', id)
-          .single();
-        if (error) throw error;
-        if (data) {
-          if (data.user_id !== user?.id) {
-            navigate('/dashboard');
-            return;
-          }
-          setDecision({
-            id: data.id,
-            ...data,
-            userId: data.user_id,
-            createdAt: data.created_at,
-            reviewDueAt: data.review_due_at,
-            predictedOutcome: data.predicted_outcome,
-            createdAtDate: new Date(data.created_at)
-          });
-        }
-      } catch (err) {
-        console.error('Error fetching decision for review:', err);
-      } finally {
-        setLoading(false);
+      const { data, error } = await supabase.from('decisions').select('*').eq('id', id).single();
+      if (error) console.error('Error fetching decision:', error);
+      else {
+        if (data.user_id !== user?.id) { navigate('/dashboard'); return; }
+        setDecision({ ...data, userId: data.user_id, createdAt: data.created_at, reviewDueAt: data.review_due_at, predictedOutcome: data.predicted_outcome, createdAtDate: new Date(data.created_at) });
       }
+      setLoading(false);
     }
     if (user) fetchDecision();
   }, [id, user, navigate]);
 
-  const handleComplete = async () => {
-    if (!user || !id || !outcome) return;
-    setIsSaving(true);
+  const handleSubmit = async () => {
+    if (!user || !decision || !actualOutcome.trim() || !outcomeMatch) {
+      toast.error('Please fill in the required fields');
+      return;
+    }
+    setIsSubmitting(true);
     try {
-      // Save Review
-      await supabase.from('reviews').insert({
-        decision_id: id,
+      const { error } = await supabase.from('reviews').insert({
         user_id: user.id,
-        what_happened: whatHappened,
-        outcome_match: outcome,
-        what_right: whatRight,
-        what_wrong: whatWrong,
+        decision_id: decision.id,
+        what_happened: actualOutcome,
+        outcome_match: outcomeMatch,
+        what_right: gotRight,
+        what_wrong: missed,
         updated_confidence: updatedConfidence,
         completed_at: new Date().toISOString()
       });
+      if (error) throw error;
+      const { error: decisionError } = await supabase.from('decisions').update({ status: 'Reviewed' }).eq('id', decision.id).eq('user_id', user.id);
+      if (decisionError) throw decisionError;
 
-      // Update Decision status
-      await supabase.from('decisions').update({ status: 'Reviewed' }).eq('id', id);
+      confetti({
+        particleCount: 150,
+        spread: 90,
+        origin: { y: 0.6 },
+        colors: ['#6b8afe', '#a78bfa', '#c8cdd4', '#10B981'],
+      });
 
-      setIsCompleted(true);
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 3000);
-    } catch (err) {
-      console.error('Failed to save review:', err);
-      setIsSaving(false);
+      toast.success('Review completed!');
+      setShowCelebration(true);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save review');
+      setIsSubmitting(false);
     }
   };
+
+  if (showCelebration) {
+    return (
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6 }} className="text-center space-y-6 sm:space-y-8 py-16 sm:py-20 lg:py-24 px-4">
+        <div className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 bg-accent rounded-full flex items-center justify-center mx-auto accent-glow">
+          <Trophy className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 text-void" strokeWidth={1.5} />
+        </div>
+        <div className="space-y-3">
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-display font-bold">Review Complete</h1>
+          <p className="text-base sm:text-lg lg:text-xl text-ink-dim/60 max-w-lg mx-auto">You have faced reality. Your thinking is now sharper than it was.</p>
+        </div>
+        <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 pt-6 px-4">
+          <Link to="/dashboard" className="w-full sm:w-auto"><Button className="w-full sm:w-auto">Back to Dashboard</Button></Link>
+          <Link to="/insights" className="w-full sm:w-auto"><Button variant="secondary" className="w-full sm:w-auto">View Insights</Button></Link>
+        </div>
+      </motion.div>
+    );
+  }
 
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
-        <Loader2 className="w-10 h-10 animate-spin text-gold-accent" />
-        <p className="text-sm font-mono text-white/40 uppercase tracking-widest">Recalling Past Thoughts...</p>
+        <div className="relative">
+          <Loader2 className="w-10 h-10 animate-spin text-accent" />
+          <div className="absolute inset-0 w-10 h-10 border-2 border-transparent border-t-white/10 rounded-full animate-spin" style={{ animationDuration: '1.5s' }} />
+        </div>
+        <p className="text-sm font-mono text-ink-dim/40 uppercase tracking-widest">Loading Review...</p>
       </div>
     );
   }
 
-  if (!decision) return <div>Not found.</div>;
-
-  if (isCompleted) {
+  if (!decision) {
     return (
-      <div className="fixed inset-0 z-[100] bg-luxury-bg flex items-center justify-center p-6 text-center">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="space-y-8"
-        >
-          <div className="relative">
-            <motion.div 
-               animate={{ scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] }}
-               transition={{ duration: 2, repeat: Infinity }}
-               className="w-24 h-24 bg-gold-accent rounded-full mx-auto flex items-center justify-center gold-glow"
-            >
-              <Sparkles className="w-10 h-10 text-luxury-bg" />
-            </motion.div>
-             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-gold-accent/20 blur-[100px] rounded-full -z-10" />
-          </div>
-          <div className="space-y-4">
-            <h1 className="text-5xl font-display font-medium">Review Complete</h1>
-            <p className="text-xl text-white/60 font-sans">Your thinking is getting sharper. Face reality. Refine the process.</p>
-          </div>
-          <div className="text-[10px] font-mono tracking-[0.5em] text-white/30 uppercase pt-12">
-            Redirecting to your vault...
-          </div>
-        </motion.div>
+      <div className="text-center py-20 space-y-4">
+        <AlertCircle className="w-12 h-12 text-ink-faint/10 mx-auto" />
+        <h2 className="text-2xl font-display font-medium">Decision Not Found</h2>
+        <Button onClick={() => navigate('/dashboard')}>Back to Dashboard</Button>
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-12">
-      <div className="text-center space-y-4">
-        <span className="text-xs font-mono uppercase tracking-[0.4em] text-gold-accent">Face the Truth</span>
-        <h1 className="text-4xl md:text-5xl font-display font-bold">Time to face it.</h1>
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="max-w-3xl mx-auto space-y-12 lg:space-y-16">
+      <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-ink-dim/60 hover:text-ink transition-colors group">
+        <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+        <span className="text-sm font-mono uppercase tracking-widest">Return</span>
+      </button>
+
+      <div className="space-y-4">
+        <Badge variant="accent">Review Mode</Badge>
+        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-display font-medium">Face Reality</h1>
+        <p className="text-base lg:text-lg text-ink-dim/60 max-w-xl">Comparing prediction to actual outcome for: <span className="text-ink font-bold">{decision.title}</span></p>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-12 items-start">
-        {/* Left: Past Entry */}
-        <div className="space-y-8">
-          <div className="flex items-center gap-2 text-white/40 mb-4">
-             <Quote className="w-4 h-4" />
-             <span className="text-xs font-mono uppercase tracking-widest">This is what you thought then</span>
-          </div>
-          
-          <Card className="bg-white/[0.02] border-white/5 opacity-60">
-            <div className="space-y-10">
-              <div>
-                <h2 className="text-2xl font-display font-medium mb-4">{decision.title}</h2>
-                <div className="flex gap-4">
-                   <Badge variant="gold">Logged {decision.createdAtDate.toLocaleDateString()}</Badge>
-                   <Badge>{decision.confidence}% Confidence</Badge>
-                </div>
-              </div>
+      <div className="bg-accent/[0.02] border border-accent/10 rounded-2xl lg:rounded-3xl p-6 lg:p-8 space-y-3">
+        <div className="text-[10px] font-mono text-ink-faint/40 uppercase tracking-widest">Your Prediction</div>
+        <p className="text-lg lg:text-xl font-display italic text-ink/80">&ldquo;{decision.predictedOutcome || 'No specific outcome predicted.'}&rdquo;</p>
+      </div>
 
-              <div className="space-y-4">
-                <label className="text-[10px] font-mono uppercase text-white/30 tracking-widest">Original Reasoning</label>
-                <p className="text-sm leading-relaxed text-white/60 italic">"{decision.reasoning || 'No reasoning'}"</p>
-              </div>
-
-              <div className="space-y-4 p-6 bg-white/[0.02] rounded-2xl border border-white/5">
-                <label className="text-[10px] font-mono uppercase text-gold-accent/40 tracking-widest">Predicted Outcome</label>
-                <p className="text-lg leading-relaxed font-display font-medium">"{decision.predictedOutcome || 'No prediction'}"</p>
-              </div>
-            </div>
-          </Card>
+      <div className="space-y-8 lg:space-y-10">
+        <div className="space-y-3">
+          <label className="text-xs font-mono text-ink-dim/60 uppercase tracking-widest">What Actually Happened?</label>
+          <textarea
+            placeholder="Describe the actual outcome with specificity..."
+            className="w-full bg-white/[0.02] border border-white/5 rounded-2xl p-5 lg:p-8 min-h-[140px] lg:min-h-[160px] outline-none focus:border-accent/40 text-ink/80 leading-relaxed text-sm"
+            value={actualOutcome}
+            onChange={(e) => setActualOutcome(e.target.value)}
+          />
         </div>
 
-        {/* Right: Review Form */}
-        <div className="space-y-10">
-          <section className="space-y-6">
-            <div className="flex flex-col gap-1">
-              <h3 className="text-sm font-mono uppercase tracking-widest text-gold-accent">What actually happened?</h3>
-              <p className="text-xs text-white/30">Free form. Be brutally honest with the version of yourself from the past.</p>
-            </div>
-            <textarea 
-              placeholder="Record the reality of the situation. Don't smooth over the edges..."
-              className="w-full bg-white/[0.04] border border-white/10 rounded-2xl p-6 min-h-[120px] outline-none focus:border-gold-accent transition-colors"
-              value={whatHappened}
-              onChange={(e) => setWhatHappened(e.target.value)}
+        <div className="space-y-3">
+          <label className="text-xs font-mono text-ink-dim/60 uppercase tracking-widest">Was Your Prediction Correct?</label>
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            {[
+              { val: 'yes', label: 'Correct', color: 'border-emerald-500/30 text-emerald-400' },
+              { val: 'partial', label: 'Partially', color: 'border-accent/30 text-accent' },
+              { val: 'no', label: 'Wrong', color: 'border-red-500/30 text-red-400' }
+            ].map((opt) => (
+              <button
+                key={opt.val}
+                onClick={() => setOutcomeMatch(opt.val as any)}
+                className={`py-4 sm:py-5 lg:py-6 rounded-xl border text-[11px] sm:text-xs font-bold uppercase tracking-widest transition-all min-h-[52px] touch-manipulation ${
+                  outcomeMatch === opt.val ? 'bg-white/5 ' + opt.color : 'bg-transparent border-white/10 text-ink-dim/40 hover:text-ink-dim/70'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6 lg:gap-10">
+          <div className="space-y-3">
+            <label className="text-xs font-mono text-ink-dim/60 uppercase tracking-widest">What You Got Right</label>
+            <textarea
+              placeholder="Where was your thinking sharp?"
+              className="w-full bg-white/[0.02] border border-white/5 rounded-2xl p-5 lg:p-6 min-h-[120px] lg:min-h-[140px] outline-none focus:border-emerald-500/40 text-ink/80 text-sm"
+              value={gotRight}
+              onChange={(e) => setGotRight(e.target.value)}
             />
-          </section>
-
-          <section className="space-y-6">
-            <h3 className="text-sm font-mono uppercase tracking-widest text-gold-accent">Was your prediction correct?</h3>
-            <div className="grid grid-cols-3 gap-4">
-              {[
-                { id: 'yes', label: 'Yes', icon: Check, color: 'text-emerald-400', bg: 'hover:bg-emerald-500/10 hover:border-emerald-500/30' },
-                { id: 'partial', label: 'Partially', icon: Sparkles, color: 'text-gold-accent', bg: 'hover:bg-gold-accent/10 hover:border-gold-accent/30' },
-                { id: 'no', label: 'No', icon: X, color: 'text-red-400', bg: 'hover:bg-red-500/10 hover:border-red-500/30' }
-              ].map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setOutcome(item.id)}
-                  className={cn(
-                    "flex flex-col items-center gap-4 p-8 rounded-2xl border transition-all duration-500",
-                    outcome === item.id 
-                      ? "bg-white/10 border-white/30 scale-105 gold-glow" 
-                      : `bg-white/[0.02] border-white/5 text-white/30 ${item.bg}`
-                  )}
-                >
-                  <item.icon className={cn("w-8 h-8", outcome === item.id ? item.color : "opacity-20")} />
-                  <span className="text-xs font-mono uppercase tracking-widest">{item.label}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <div className="grid md:grid-cols-2 gap-8">
-            <section className="space-y-4">
-              <label className="text-[10px] font-mono uppercase text-white/30 tracking-[0.2em]">What did you get right?</label>
-              <textarea 
-                className="w-full bg-white/[0.04] border border-white/10 rounded-xl p-4 text-xs min-h-[80px]" 
-                value={whatRight}
-                onChange={(e) => setWhatRight(e.target.value)}
-              />
-            </section>
-            <section className="space-y-4">
-              <label className="text-[10px] font-mono uppercase text-white/30 tracking-[0.2em]">What did you miss?</label>
-              <textarea 
-                className="w-full bg-white/[0.04] border border-white/10 rounded-xl p-4 text-xs min-h-[80px]" 
-                value={whatWrong}
-                onChange={(e) => setWhatWrong(e.target.value)}
-              />
-            </section>
           </div>
-
-          <section className="space-y-6 pt-6">
-            <div className="flex justify-between items-end">
-               <h3 className="text-sm font-mono uppercase tracking-widest text-gold-accent">Process Confidence</h3>
-               <span className="text-2xl font-display font-medium text-gold-accent">{updatedConfidence}%</span>
-            </div>
-             <input 
-              type="range" min="0" max="100"
-              value={updatedConfidence}
-              onChange={(e) => setUpdatedConfidence(parseInt(e.target.value))}
-              className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-gold-accent" 
-             />
-          </section>
-
-          <button 
-            disabled={isSaving || !outcome || !whatHappened.trim()}
-            onClick={handleComplete}
-            className="w-full py-10 bg-luxury-surface border border-gold-accent/20 rounded-3xl flex flex-col items-center gap-4 gold-glow hover:bg-gold-accent hover:text-luxury-bg transition-all group overflow-hidden relative disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <div className="absolute inset-0 bg-gold-accent scale-x-0 group-hover:scale-x-100 origin-left transition-transform duration-700 -z-10" />
-            {isSaving ? <Loader2 className="w-8 h-8 animate-spin" /> : <ShieldAlert className="w-8 h-8" />}
-            <div className="text-center">
-              <h4 className="text-xl font-display font-medium">{isSaving ? 'Locking in Review...' : 'Complete This Review'}</h4>
-              <p className="text-[10px] font-mono tracking-widest opacity-60">Locked in history.</p>
-            </div>
-          </button>
+          <div className="space-y-3">
+            <label className="text-xs font-mono text-ink-dim/60 uppercase tracking-widest">What You Missed</label>
+            <textarea
+              placeholder="Where did your model break down?"
+              className="w-full bg-white/[0.02] border border-white/5 rounded-2xl p-5 lg:p-6 min-h-[120px] lg:min-h-[140px] outline-none focus:border-red-500/40 text-ink/80 text-sm"
+              value={missed}
+              onChange={(e) => setMissed(e.target.value)}
+            />
+          </div>
         </div>
+
+        <div className="space-y-6 lg:space-y-8">
+          <div className="flex justify-between items-end">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-mono text-ink-dim/60 uppercase tracking-widest">Updated Confidence</label>
+              <p className="text-xs text-ink-faint/40 italic">How certain are you now, knowing what you know?</p>
+            </div>
+            <span className="text-2xl lg:text-3xl font-display text-accent">{updatedConfidence}%</span>
+          </div>
+          <input
+            type="range" min="0" max="100" value={updatedConfidence}
+            onChange={(e) => setUpdatedConfidence(parseInt(e.target.value))}
+            className="w-full h-2 bg-white/10 rounded-full accent-accent"
+          />
+        </div>
+
+        <button
+          onClick={handleSubmit}
+          disabled={isSubmitting || !actualOutcome.trim() || !outcomeMatch}
+          className="w-full py-5 lg:py-6 bg-accent text-void rounded-2xl lg:rounded-3xl font-bold text-lg lg:text-xl hover:bg-[#7a96ff] transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.99]"
+        >
+          {isSubmitting ? 'Saving Review...' : 'Complete Review'}
+        </button>
       </div>
-    </div>
+    </motion.div>
   );
 }

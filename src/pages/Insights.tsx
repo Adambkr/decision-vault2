@@ -1,35 +1,55 @@
-import { Card, Badge } from '@/components/ui';
-import { 
-  Dna, 
-  Target, 
-  TrendingUp, 
-  History, 
+import { Card, Badge, GlassPanel } from '@/components/ui';
+import {
+  Dna,
+  Target,
+  TrendingUp,
   ArrowUpRight,
   Zap,
-  CheckCircle2,
   AlertTriangle,
-  Loader2
+  Loader2,
+  BrainCircuit,
+  BarChart3,
+  Activity,
 } from 'lucide-react';
 import { useEffect, useState, useMemo } from 'react';
+import { motion } from 'motion/react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  BarChart, 
-  Bar, 
-  Cell,
-  ScatterChart, 
-  Scatter, 
+import {
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ScatterChart,
+  Scatter,
   ZAxis,
-  PieChart,
-  Pie
+  ReferenceLine,
+  AreaChart,
+  Area,
 } from 'recharts';
+import { reveal, fadeUp, staggerContainer } from '@/lib/motion';
+import DecisionHeatmap from '@/components/insights/DecisionHeatmap';
+import BehavioralPatternPanel from '@/components/insights/BehavioralPatternPanel';
+
+const chartTooltipStyle = {
+  backgroundColor: 'rgba(15,20,28,0.92)',
+  backdropFilter: 'blur(20px)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  borderRadius: '12px',
+  fontSize: '12px',
+  padding: '10px 12px',
+  letterSpacing: '-0.01em',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 8px 32px rgba(0,0,0,0.4)',
+};
+
+const chartTickStyle = {
+  fill: 'rgba(138,145,156,0.55)',
+  fontSize: 10,
+  fontFamily: 'Inter, sans-serif',
+  letterSpacing: '0.02em',
+};
 
 export default function Insights() {
   const { user } = useAuth();
@@ -91,37 +111,30 @@ export default function Insights() {
     };
   }, [user]);
 
-  // Transform data for charts
   const accuracyData = useMemo(() => {
-    // Group reviews by month
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const monthlyStats: Record<string, { accuracy: number, count: number, confidence: number }> = {};
-    
+
     reviews.forEach(review => {
       const date = review.completedAt ? new Date(review.completedAt) : new Date();
       const month = months[date.getMonth()];
-      
-      if (!monthlyStats[month]) {
-        monthlyStats[month] = { accuracy: 0, count: 0, confidence: 0 };
-      }
-      
-      // Outcome Match: yes=100, partial=50, no=0
+      if (!monthlyStats[month]) monthlyStats[month] = { accuracy: 0, count: 0, confidence: 0 };
       let accVal = 0;
       if (review.outcomeMatch === 'yes') accVal = 100;
       else if (review.outcomeMatch === 'partial') accVal = 50;
-      
       const decision = decisions.find(d => d.id === review.decisionId);
-      
       monthlyStats[month].accuracy += accVal;
       monthlyStats[month].confidence += decision?.confidence || 0;
       monthlyStats[month].count += 1;
     });
 
-    return Object.entries(monthlyStats).map(([name, stats]) => ({
-      name,
-      accuracy: Math.round(stats.accuracy / stats.count),
-      confidence: Math.round(stats.confidence / stats.count)
-    })).sort((a, b) => months.indexOf(a.name) - months.indexOf(b.name));
+    return Object.entries(monthlyStats)
+      .filter(([, stats]) => stats.count > 0)
+      .map(([name, stats]) => ({
+        name,
+        accuracy: Math.round(stats.accuracy / stats.count),
+        confidence: Math.round(stats.confidence / stats.count)
+      })).sort((a, b) => months.indexOf(a.name) - months.indexOf(b.name));
   }, [reviews, decisions]);
 
   const calibrationData = useMemo(() => {
@@ -130,11 +143,7 @@ export default function Insights() {
       let accVal = 0;
       if (review.outcomeMatch === 'yes') accVal = 100;
       else if (review.outcomeMatch === 'partial') accVal = 50;
-
-      return {
-        x: decision?.confidence || 0,
-        y: accVal
-      };
+      return { x: decision?.confidence || 0, y: accVal };
     });
   }, [reviews, decisions]);
 
@@ -144,8 +153,7 @@ export default function Insights() {
       const cat = d.categories?.[0] || 'Other';
       counts[cat] = (counts[cat] || 0) + 1;
     });
-    
-    const colors = ['#F5A623', '#FFD166', '#ffffff', '#4a4a4a', '#E5E7EB'];
+    const colors = ['#6b8afe', '#a78bfa', '#5eead4', '#c8cdd4', '#8a919c'];
     return Object.entries(counts).map(([name, val], i) => ({
       name,
       value: val,
@@ -156,170 +164,234 @@ export default function Insights() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
-        <Loader2 className="w-10 h-10 animate-spin text-gold-accent" />
-        <p className="text-sm font-mono text-white/40 uppercase tracking-widest">Analyzing Neural Patterns...</p>
+        <div className="relative">
+          <Loader2 className="w-8 h-8 animate-spin text-accent/50" strokeWidth={1.5} />
+          <div className="absolute inset-0 w-8 h-8 border border-transparent border-t-white/5 rounded-full animate-spin" style={{ animationDuration: '1.5s' }} />
+        </div>
+        <p className="text-xs font-medium text-ink-faint/30 uppercase tracking-[0.2em]">Analyzing Patterns...</p>
       </div>
     );
   }
+
   return (
-    <div className="space-y-16">
+    <motion.div
+      variants={staggerContainer(0.07)}
+      initial="hidden"
+      animate="visible"
+      className="space-y-12 lg:space-y-16"
+    >
       {/* Header */}
-      <div className="flex border-b border-white/5 pb-10">
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-4">
-             <Dna className="w-6 h-6 text-gold-accent" />
-             <span className="text-xs font-mono uppercase tracking-[0.4em] text-white/40">Your Decision DNA</span>
+      <motion.div
+        variants={reveal}
+        className="flex flex-col sm:flex-row sm:items-end gap-5 border-b border-white/[0.045] pb-9"
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2.5 mb-4">
+            <BrainCircuit className="w-3.5 h-3.5 text-accent/65" strokeWidth={1.6} />
+            <span className="kicker-accent">Your Decision DNA</span>
           </div>
-          <h1 className="text-5xl font-display font-medium">Insights</h1>
+          <h1 className="text-display text-display-balanced text-3xl sm:text-4xl lg:text-[56px] font-semibold leading-[1.04]">
+            <span className="font-editorial text-accent/95">Insights</span> into how you think.
+          </h1>
         </div>
-        <div className="flex gap-4">
-           <Card className="flex items-center gap-4 py-3 px-6">
-              <span className="text-xs font-mono text-white/40">Last 90 Days</span>
-              <div className="w-px h-6 bg-white/10" />
-              <button className="text-gold-accent text-xs font-bold font-mono">Filter</button>
-           </Card>
+        <div className="flex gap-3 shrink-0">
+          <div className="glass-card edge-light inline-flex items-center gap-3 py-2.5 px-4 rounded-xl">
+            <Activity className="w-3.5 h-3.5 text-accent/65" strokeWidth={1.6} />
+            <span className="text-[10px] font-medium text-ink-faint/65 uppercase tracking-[0.22em]">
+              Last 90 Days
+            </span>
+          </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Main Charts */}
-      <div className="grid lg:grid-cols-2 gap-8">
-        <Card className="p-8 h-[400px]">
-          <div className="flex justify-between items-center mb-8">
-            <h3 className="font-display text-xl">Accuracy Over Time</h3>
+      <motion.div variants={fadeUp} className="grid lg:grid-cols-2 gap-5">
+        <GlassPanel elevation="raised" padding="md" edgeLight className="h-[400px]">
+          <div className="flex justify-between items-center mb-7">
+            <div className="flex items-center gap-2.5">
+              <BarChart3 className="w-4 h-4 text-accent/65" strokeWidth={1.6} />
+              <h3 className="text-display text-[14px] font-semibold text-ink-dim/85 tracking-tight">
+                Accuracy Over Time
+              </h3>
+            </div>
             {accuracyData.length >= 2 && (
               <Badge variant="success">
                 {(() => {
-                  const first = accuracyData.slice(0, Math.ceil(accuracyData.length / 2)).reduce((s, d) => s + d.accuracy, 0) / Math.ceil(accuracyData.length / 2);
-                  const last = accuracyData.slice(Math.floor(accuracyData.length / 2)).reduce((s, d) => s + d.accuracy, 0) / Math.floor(accuracyData.length / 2 || 1);
+                  const first =
+                    accuracyData.slice(0, Math.ceil(accuracyData.length / 2)).reduce((s, d) => s + d.accuracy, 0) /
+                    Math.ceil(accuracyData.length / 2);
+                  const last =
+                    accuracyData.slice(Math.floor(accuracyData.length / 2)).reduce((s, d) => s + d.accuracy, 0) /
+                    Math.floor(accuracyData.length / 2 || 1);
                   const diff = Math.round(last - first);
                   return `${diff >= 0 ? '+' : ''}${diff}%`;
                 })()}
               </Badge>
             )}
           </div>
-          <ResponsiveContainer width="100%" height="80%">
-            <LineChart data={accuracyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
-              <XAxis 
-                dataKey="name" 
-                axisLine={false} 
-                tickLine={false} 
-                tick={{ fill: '#ffffff40', fontSize: 10, fontFamily: 'JetBrains Mono' }} 
+          <ResponsiveContainer width="100%" height="78%">
+            <AreaChart data={accuracyData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <defs>
+                <linearGradient id="accGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#6b8afe" stopOpacity={0.22} />
+                  <stop offset="100%" stopColor="#6b8afe" stopOpacity={0} />
+                </linearGradient>
+                <filter id="accGlow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="2.5" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+              <CartesianGrid strokeDasharray="3 6" stroke="rgba(255,255,255,0.035)" vertical={false} />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={chartTickStyle} />
+              <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={chartTickStyle} />
+              <Tooltip
+                contentStyle={chartTooltipStyle}
+                itemStyle={{ color: '#6b8afe', fontSize: '12px', letterSpacing: '-0.01em' }}
+                labelStyle={{ color: '#8a919c', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.18em' }}
               />
-              <YAxis 
-                domain={[0, 100]}
-                axisLine={false} 
-                tickLine={false} 
-                tick={{ fill: '#ffffff40', fontSize: 10, fontFamily: 'JetBrains Mono' }} 
+              <Area
+                type="monotone"
+                dataKey="accuracy"
+                stroke="#6b8afe"
+                strokeWidth={2}
+                fill="url(#accGrad)"
+                filter="url(#accGlow)"
+                dot={{ fill: '#6b8afe', strokeWidth: 0, r: 3 }}
+                activeDot={{ r: 5, stroke: '#6b8afe', strokeWidth: 2, fill: '#0a0e17' }}
               />
-              <Tooltip 
-                contentStyle={{ backgroundColor: '#0A0F1E', border: '1px solid #F5A62340', borderRadius: '12px' }}
-                itemStyle={{ color: '#F5A623', fontSize: '12px' }}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="accuracy" 
-                stroke="#F5A623" 
-                strokeWidth={3} 
-                dot={{ fill: '#F5A623', strokeWidth: 0, r: 4 }}
-                activeDot={{ r: 6, stroke: '#F5A623', strokeWidth: 2, fill: '#080C14' }}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="confidence" 
-                stroke="#ffffff20" 
-                strokeWidth={1} 
-                strokeDasharray="5 5"
+              <Line
+                type="monotone"
+                dataKey="confidence"
+                stroke="rgba(138,145,156,0.65)"
+                strokeWidth={1.2}
+                strokeDasharray="4 5"
                 dot={false}
               />
-            </LineChart>
+            </AreaChart>
           </ResponsiveContainer>
-        </Card>
+        </GlassPanel>
 
-        <Card className="p-8 h-[400px]">
-          <div className="flex justify-between items-center mb-8">
-            <h3 className="font-display text-xl">Calibration Curve</h3>
-            <div className="group relative">
-               <AlertTriangle className="w-4 h-4 text-white/20 hover:text-gold-accent transition-colors" />
+        <GlassPanel elevation="raised" padding="md" edgeLight className="h-[400px]">
+          <div className="flex justify-between items-center mb-7">
+            <div className="flex items-center gap-2.5">
+              <Target className="w-4 h-4 text-violet/65" strokeWidth={1.6} />
+              <h3 className="text-display text-[14px] font-semibold text-ink-dim/85 tracking-tight">
+                Calibration Curve
+              </h3>
             </div>
+            <AlertTriangle className="w-3.5 h-3.5 text-ink-faint/30" strokeWidth={1.6} />
           </div>
-          <ResponsiveContainer width="100%" height="80%">
-            <ScatterChart>
-              <CartesianGrid stroke="#ffffff05" />
-              <XAxis 
-                type="number" 
-                dataKey="x" 
-                name="Confidence" 
-                unit="%" 
+          <ResponsiveContainer width="100%" height="74%">
+            <ScatterChart margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <CartesianGrid stroke="rgba(255,255,255,0.035)" strokeDasharray="3 6" />
+              <XAxis
+                type="number"
+                dataKey="x"
+                name="Confidence"
+                unit="%"
                 domain={[0, 100]}
-                axisLine={false} 
+                axisLine={false}
                 tickLine={false}
-                tick={{ fill: '#ffffff40', fontSize: 10, fontFamily: 'JetBrains Mono' }} 
+                tick={chartTickStyle}
               />
-              <YAxis 
-                type="number" 
-                dataKey="y" 
-                name="Accuracy" 
-                unit="%" 
+              <YAxis
+                type="number"
+                dataKey="y"
+                name="Accuracy"
+                unit="%"
                 domain={[0, 100]}
-                axisLine={false} 
+                axisLine={false}
                 tickLine={false}
-                tick={{ fill: '#ffffff40', fontSize: 10, fontFamily: 'JetBrains Mono' }} 
+                tick={chartTickStyle}
               />
-              <ZAxis type="number" range={[60, 400]} />
-              <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-              <Scatter name="Decisions" data={calibrationData} fill="#F5A623" />
-              <Line 
-                type="linear" 
-                data={[ {x: 0, y: 0}, {x: 100, y: 100} ]} 
-                stroke="#ffffff10" 
-                strokeDasharray="3 3"
-                dot={false}
+              <ZAxis type="number" range={[40, 200]} />
+              <Tooltip cursor={{ strokeDasharray: '3 6' }} contentStyle={chartTooltipStyle} />
+              <Scatter name="Decisions" data={calibrationData} fill="#a78bfa" fillOpacity={0.75} />
+              <ReferenceLine
+                segment={[
+                  { x: 0, y: 0 },
+                  { x: 100, y: 100 },
+                ]}
+                stroke="rgba(255,255,255,0.08)"
+                strokeDasharray="3 5"
               />
             </ScatterChart>
           </ResponsiveContainer>
-          <p className="text-[10px] font-mono text-white/30 mt-4 text-center">PERFECT CALIBRATION DIAGONAL</p>
-        </Card>
-      </div>
+          <p className="text-[9px] font-medium text-ink-faint/40 mt-3 text-center uppercase tracking-[0.32em]">
+            Perfect Calibration Diagonal
+          </p>
+        </GlassPanel>
+      </motion.div>
+
+      {/* Decision Heatmap — density × accuracy over time */}
+      <motion.div variants={fadeUp}>
+        <GlassPanel elevation="raised" padding="lg" edgeLight className="relative overflow-hidden">
+          <div className="pointer-events-none absolute -top-16 -right-16 w-48 h-48 bg-accent/[0.05] blur-[80px] rounded-full" />
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-7">
+              <div className="flex items-center gap-2.5">
+                <Activity className="w-4 h-4 text-accent/65" strokeWidth={1.6} />
+                <h3 className="text-display text-[14px] font-semibold text-ink-dim/85 tracking-tight">
+                  Decision Activity
+                </h3>
+              </div>
+              <span className="text-[10px] font-medium text-ink-faint/55 uppercase tracking-[0.22em]">
+                26 weeks
+              </span>
+            </div>
+            <DecisionHeatmap decisions={decisions} reviews={reviews} weeks={26} />
+          </div>
+        </GlassPanel>
+      </motion.div>
+
+      {/* Behavioral Patterns — AI-styled deterministic synthesis */}
+      <motion.div variants={fadeUp}>
+        <BehavioralPatternPanel decisions={decisions} reviews={reviews} />
+      </motion.div>
 
       {/* Stats and Categories */}
-      <div className="grid lg:grid-cols-3 gap-8">
-        <Card className="col-span-1 p-8">
-          <h3 className="font-display text-xl mb-6">Category Distribution</h3>
-          <div className="h-64">
-             <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={categoryDistribution}
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={8}
-                    dataKey="value"
-                  >
-                    {categoryDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-             </ResponsiveContainer>
+      <motion.div variants={fadeUp} className="grid lg:grid-cols-3 gap-5">
+        <GlassPanel elevation="card" padding="md" edgeLight className="col-span-1">
+          <div className="flex items-center gap-2.5 mb-7">
+            <Dna className="w-4 h-4 text-cyan/65" strokeWidth={1.6} />
+            <h3 className="text-display text-[14px] font-semibold text-ink-dim/85 tracking-tight">
+              Category Distribution
+            </h3>
           </div>
-          <div className="space-y-3 mt-4">
-            {categoryDistribution.map(cat => (
-              <div key={cat.name} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />
-                  <span className="text-xs font-mono text-white/60">{cat.name}</span>
+          <div className="space-y-4">
+            {categoryDistribution.map((cat, i) => (
+              <div key={cat.name} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="w-2 h-2 rounded-full shadow-[0_0_6px_currentColor]"
+                      style={{ backgroundColor: cat.color, color: cat.color }}
+                    />
+                    <span className="text-xs font-medium text-ink-dim/85 tracking-tight">{cat.name}</span>
+                  </div>
+                  <span className="text-xs font-semibold text-ink-dim/55 tabular-nums tracking-tight">
+                    {Math.round((cat.value / (decisions.length || 1)) * 100)}%
+                  </span>
                 </div>
-                <span className="text-xs font-mono font-bold">
-                  {Math.round((cat.value / (decisions.length || 1)) * 100)}%
-                </span>
+                <div className="h-1 bg-white/[0.045] rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    whileInView={{ width: `${(cat.value / (decisions.length || 1)) * 100}%` }}
+                    viewport={{ once: true }}
+                    transition={{ delay: i * 0.08, duration: 1.1, ease: [0.16, 1, 0.3, 1] }}
+                    className="h-full rounded-full"
+                    style={{ backgroundColor: cat.color, opacity: 0.7, boxShadow: `0 0 8px ${cat.color}` }}
+                  />
+                </div>
               </div>
             ))}
           </div>
-        </Card>
+        </GlassPanel>
 
-        <div className="col-span-2 space-y-6">
+        <div className="col-span-2 space-y-5">
           {(() => {
             const categoryStats: Record<string, { totalConfidence: number, totalAccuracy: number, count: number }> = {};
             reviews.forEach(review => {
@@ -360,68 +432,75 @@ export default function Insights() {
 
             return (
               <>
-                <div className="grid md:grid-cols-2 gap-6">
+                <div className="grid md:grid-cols-2 gap-5">
                   {best && (
-                    <div className="bg-emerald-500/[0.03] border border-emerald-500/10 rounded-2xl p-8 flex flex-col gap-6">
-                      <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-                        <Target className="text-emerald-400" />
+                    <GlassPanel elevation="card" padding="md" edgeLight className="flex flex-col gap-5">
+                      <div className="w-10 h-10 rounded-xl bg-emerald/[0.06] border border-emerald/[0.18] flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_16px_rgba(52,211,153,0.08)]">
+                        <Target className="w-4 h-4 text-emerald/70" strokeWidth={1.6} />
                       </div>
                       <div>
-                        <h4 className="text-lg font-bold mb-2">Calibration Strength</h4>
-                        <p className="text-sm text-white/50 leading-relaxed">
-                          You are <span className="text-emerald-400 font-bold">highly calibrated</span> in {best.name} decisions.
-                          When you say {Math.round(best.avgConfidence)}% confidence, you are right {Math.round(best.avgAccuracy)}% of the time.
+                        <h4 className="text-display text-[15px] font-semibold mb-2 tracking-tight">Calibration Strength</h4>
+                        <p className="text-[13px] text-ink-dim/85 leading-relaxed font-light">
+                          You are <span className="text-emerald/90 font-medium">highly calibrated</span> in {best.name}{' '}
+                          decisions. At {Math.round(best.avgConfidence)}% confidence, you are right{' '}
+                          {Math.round(best.avgAccuracy)}% of the time.
                         </p>
                       </div>
-                    </div>
+                    </GlassPanel>
                   )}
                   {worst && (
-                    <div className="bg-red-500/[0.03] border border-red-500/10 rounded-2xl p-8 flex flex-col gap-6">
-                      <div className="w-12 h-12 rounded-xl bg-red-500/10 flex items-center justify-center">
-                        <AlertTriangle className="text-red-400" />
+                    <GlassPanel elevation="card" padding="md" edgeLight className="flex flex-col gap-5">
+                      <div className="w-10 h-10 rounded-xl bg-rose/[0.06] border border-rose/[0.18] flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_16px_rgba(251,113,133,0.08)]">
+                        <AlertTriangle className="w-4 h-4 text-rose/70" strokeWidth={1.6} />
                       </div>
                       <div>
-                        <h4 className="text-lg font-bold mb-2">Overconfidence Trap</h4>
-                        <p className="text-sm text-white/50 leading-relaxed">
-                          You tend to be <span className="text-red-400 font-bold">overconfident</span> in {worst.name}.
-                          Your accuracy is {Math.round(worst.avgConfidence - worst.avgAccuracy)}% lower than your predicted confidence.
+                        <h4 className="text-display text-[15px] font-semibold mb-2 tracking-tight">Overconfidence Trap</h4>
+                        <p className="text-[13px] text-ink-dim/85 leading-relaxed font-light">
+                          You tend to be <span className="text-rose/90 font-medium">overconfident</span> in{' '}
+                          {worst.name}. Your accuracy is{' '}
+                          {Math.round(worst.avgConfidence - worst.avgAccuracy)}% lower than your predicted
+                          confidence.
                         </p>
                       </div>
-                    </div>
+                    </GlassPanel>
                   )}
                   {!best && !worst && reviews.length === 0 && (
-                    <div className="col-span-2 bg-white/[0.02] border border-white/5 rounded-2xl p-8 text-center">
-                      <p className="text-sm text-white/40">Complete some reviews to unlock calibration insights.</p>
-                    </div>
+                    <GlassPanel padding="md" className="col-span-2 text-center">
+                      <p className="text-xs text-ink-dim/65 font-light italic">
+                        Complete some reviews to unlock calibration insights.
+                      </p>
+                    </GlassPanel>
                   )}
                 </div>
 
                 {assumptionDelta !== 0 && (
-                  <Card className="p-8 relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-                      <Zap className="w-24 h-24 text-gold-accent" />
+                  <GlassPanel elevation="raised" padding="lg" edgeLight className="relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-8 opacity-[0.04]">
+                      <Zap className="w-24 h-24 text-accent" strokeWidth={1} />
                     </div>
-                    <div className="relative z-10 flex flex-col gap-6">
-                      <span className="text-[10px] font-mono uppercase tracking-[0.4em] text-white/20">The Golden Insight</span>
-                      <p className="text-2xl font-display italic leading-tight">
-                        "Your decisions are {Math.abs(assumptionDelta)}% {assumptionDelta > 0 ? 'more' : 'less'} accurate when you list 3 or more assumptions during the reasoning phase."
+                    <div className="absolute -top-12 -right-12 w-48 h-48 bg-accent/[0.06] rounded-full blur-[60px]" />
+                    <div className="relative z-10 flex flex-col gap-5">
+                      <span className="kicker-accent">The Golden Insight</span>
+                      <p className="font-editorial italic text-[22px] sm:text-[28px] leading-[1.25] text-ink/95 max-w-3xl">
+                        &ldquo;Your decisions are {Math.abs(assumptionDelta)}%{' '}
+                        {assumptionDelta > 0 ? 'more' : 'less'} accurate when you list 3 or more assumptions during
+                        the reasoning phase.&rdquo;
                       </p>
-                      <div className="flex items-center gap-2 text-gold-accent">
-                        <span className="text-xs font-bold">Adopt this pattern</span>
-                        <ArrowUpRight className="w-4 h-4" />
+                      <div className="flex items-center gap-1.5 text-accent/85 group cursor-default">
+                        <span className="text-xs font-semibold tracking-tight">Adopt this pattern</span>
+                        <ArrowUpRight
+                          className="w-3.5 h-3.5 transition-transform duration-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                          strokeWidth={1.8}
+                        />
                       </div>
                     </div>
-                  </Card>
+                  </GlassPanel>
                 )}
               </>
             );
           })()}
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
-}
-
-function cn(...inputs: any[]) {
-  return inputs.filter(Boolean).join(' ');
 }
